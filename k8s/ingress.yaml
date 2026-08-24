@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mansaoferta-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "mansaoferta-ip"
+    networking.gke.io/managed-certificates: "mansaoferta-cert"
+spec:
+  rules:
+  - host: mansaoferta.com.ar
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: mansaoferta-service
+            port:
+              number: 80
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: mansaoferta-cert
+  namespace: default
+spec:
+  domains:
+    - mansaoferta.com.ar
+    - www.mansaoferta.com.ar

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mansaoferta-config
+  namespace: default
+data:
+  NEXT_PUBLIC_SUPABASE_URL: "https://your-project.supabase.co"
+  NEXT_PUBLIC_BASE_URL: "http://localhost:3000"

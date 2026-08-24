@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mansaoferta-service
+  namespace: default
+  labels:
+    app: mansaoferta
+spec:
+  type: ClusterIP
+  selector:
+    app: mansaoferta
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http

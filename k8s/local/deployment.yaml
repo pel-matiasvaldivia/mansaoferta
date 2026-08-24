@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mansaoferta
+  namespace: default
+  labels:
+    app: mansaoferta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mansaoferta
+  template:
+    metadata:
+      labels:
+        app: mansaoferta
+    spec:
+      containers:
+      - name: mansaoferta
+        image: mansaoferta/app:latest
+        imagePullPolicy: IfNotPresent # Pull from Docker Hub if not available locally
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        envFrom:
+        - configMapRef:
+            name: mansaoferta-config
+        - secretRef:
+            name: mansaoferta-secrets
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3

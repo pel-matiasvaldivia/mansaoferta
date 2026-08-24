@@ -22,9 +22,9 @@ export default function CartPage() {
                 setError(result.error)
             } else {
                 clearCart()
-                router.push('/dashboard')
+                router.push('/orders')
             }
-        } catch (e) {
+        } catch {
             setError('Ocurrió un error inesperado')
         } finally {
             setLoading(false)
@@ -51,8 +51,8 @@ export default function CartPage() {
                     {items.map((item) => (
                         <div key={item.id} className="flex gap-4 p-4 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700">
                             <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
-                                {item.image_url ? (
-                                    <img src={item.image_url} alt={item.title} className="h-full w-full object-cover object-center" />
+                                {item.imageUrl ? (
+                                    <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover object-center" />
                                 ) : (
                                     <div className="h-full w-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">Sin img</div>
                                 )}

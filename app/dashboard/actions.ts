@@ -1,24 +1,42 @@
 'use server'
 
-import { createClient } from '@/utils/supabase/server'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { OrderStatus } from '@prisma/client'
+import { prisma } from '@/lib/db'
+import { requireTenantMember, getCurrentMembership } from '@/lib/dal'
+import { publish } from '@/lib/events'
 
-export async function updateOrderStatus(orderId: string, newStatus: string) {
-    const supabase = await createClient()
+const schema = z.object({
+  orderId: z.string().min(1),
+  status: z.nativeEnum(OrderStatus),
+})
 
-    // Verify ownership? RLS policies "Pymes can update status of their orders" should handle it.
-    // The policy:
-    // using ( exists ( select 1 from combos where combos.id = orders.combo_id and combos.pyme_id = auth.uid() ) )
+// A pyme advances one of its own orders through the fulfilment states.
+export async function updateOrderStatus(orderId: string, status: string) {
+  const parsed = schema.safeParse({ orderId, status })
+  if (!parsed.success) throw new Error('Estado inválido')
 
-    const { error } = await supabase
-        .from('orders')
-        .update({ status: newStatus })
-        .eq('id', orderId)
+  const membership = await getCurrentMembership()
+  if (!membership) throw new Error('No autorizado')
 
-    if (error) {
-        console.error('Error updating status:', error)
-        throw new Error('Error al actualizar el estado')
-    }
+  // Ensure the order belongs to a tenant this user manages.
+  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId } })
+  if (!order) throw new Error('Pedido no encontrado')
+  await requireTenantMember(order.tenantId, ['OWNER', 'STAFF'])
 
-    revalidatePath('/dashboard')
+  const updated = await prisma.order.update({
+    where: { id: order.id },
+    data: { status: parsed.data.status },
+  })
+
+  publish({
+    type: 'order.status_changed',
+    tenantId: updated.tenantId,
+    consumerId: updated.consumerId,
+    orderId: updated.id,
+    status: updated.status,
+  })
+
+  revalidatePath('/dashboard/orders')
 }

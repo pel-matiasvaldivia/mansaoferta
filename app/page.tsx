@@ -1,56 +1,19 @@
-import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
-import ComboCard from '@/components/ComboCard'
+import ProductCard from '@/components/ProductCard'
 import { ArrowRight, ShoppingBag, Store, Users } from 'lucide-react'
+import { prisma } from '@/lib/db'
+import { toProductCard } from '@/lib/serialize'
 
 export const dynamic = 'force-dynamic'
 
 export default async function Home() {
-  const supabase = await createClient()
-
-  // Fetch featured combos
-  const { data: dbCombos } = await supabase
-    .from('combos')
-    .select('*')
-    .eq('active', true)
-    .gt('stock', 0)
-    .limit(3)
-    .order('created_at', { ascending: false })
-
-  const EXAMPLE_COMBOS = [
-    {
-      id: 'ex-1',
-      title: 'Combo Familiar',
-      description: '2 Pizzas grandes + 1 Gaseosa 1.5L. Ideal para compartir el fin de semana.',
-      price: 15000,
-      stock: 10,
-      image_url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=300&auto=format&fit=crop',
-      pyme_id: 'example',
-      active: true
-    },
-    {
-      id: 'ex-2',
-      title: 'Pack Desayuno',
-      description: 'Café molido 500g + 2 Medialunas. Empezá tu día con energía.',
-      price: 4500,
-      stock: 5,
-      image_url: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=300&auto=format&fit=crop',
-      pyme_id: 'example',
-      active: true
-    },
-    {
-      id: 'ex-3',
-      title: 'Kit Limpieza',
-      description: 'Lavandina 2L + Detergente + Esponjas. Todo lo que necesitas para tu hogar.',
-      price: 8900,
-      stock: 20,
-      image_url: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?q=80&w=300&auto=format&fit=crop',
-      pyme_id: 'example',
-      active: true
-    }
-  ]
-
-  const featuredCombos = dbCombos && dbCombos.length > 0 ? dbCombos : EXAMPLE_COMBOS
+  const dbProducts = await prisma.product.findMany({
+    where: { active: true, OR: [{ stock: null }, { stock: { gt: 0 } }] },
+    include: { tenant: { select: { id: true, name: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 3,
+  })
+  const featured = dbProducts.map((p) => toProductCard(p, p.tenant))
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -73,11 +36,11 @@ export default async function Home() {
               Explorar Ofertas
             </Link>
             <Link
-              href="/login?role=pyme"
+              href="/register"
               className="inline-flex items-center justify-center rounded-lg border border-transparent bg-indigo-500 bg-opacity-30 border-indigo-400 px-8 py-3 text-base font-medium text-white hover:bg-opacity-40 transition-colors backdrop-blur-sm"
             >
               <Store className="mr-2 h-5 w-5" />
-              Soy Vendedor
+              Vendé en MansaOferta
             </Link>
           </div>
         </div>
@@ -96,9 +59,9 @@ export default async function Home() {
           </div>
 
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {featuredCombos && featuredCombos.length > 0 ? (
-              featuredCombos.map((combo) => (
-                <ComboCard key={combo.id} combo={combo} />
+            {featured.length > 0 ? (
+              featured.map((product) => (
+                <ProductCard key={product.id} product={product} />
               ))
             ) : (
               <div className="col-span-full py-12 text-center border-2 border-dashed border-gray-200 rounded-xl">

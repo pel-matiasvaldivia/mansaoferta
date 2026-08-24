@@ -1,20 +1,9 @@
-import { createClient } from '@/utils/supabase/server'
+import { auth } from '@/auth'
 import RealtimeListener from './RealtimeListener'
 
+// Only mounts the realtime listener for authenticated users.
 export default async function RealtimeInitializer() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) return null
-
-    // We need the role.
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-    if (!profile) return null
-
-    return <RealtimeListener userId={user.id} role={profile.role} />
+  const session = await auth()
+  if (!session?.user) return null
+  return <RealtimeListener />
 }

@@ -1,0 +1,226 @@
+// Prisma schema for the mansaoferta SaaS marketplace.
+// Multi-tenant: each Tenant is a "pyme" business with its own dashboard,
+// products/services and subscription plan. Authorization is enforced in the
+// server-side data-access layer (lib/dal), replacing Supabase RLS.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum GlobalRole {
+  USER
+  SUPERADMIN
+}
+
+enum MembershipRole {
+  OWNER
+  STAFF
+}
+
+enum PlanTier {
+  FREE
+  PRO
+}
+
+enum PlanStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum ProductType {
+  PRODUCT
+  SERVICE
+}
+
+enum OrderStatus {
+  RECEIVED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Auth.js) + application users
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  name          String?
+  image         String?
+  // Null for users who only sign in through an OAuth provider.
+  passwordHash  String?
+  emailVerified DateTime?
+  globalRole    GlobalRole @default(USER)
+  createdAt     DateTime   @default(now())
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+  orders      Order[]
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy (the SaaS core)
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  name      String
+  logoUrl   String?
+  address   String?
+  city      String?
+  phone     String?
+  // MercadoPago access token, stored encrypted (never exposed to clients).
+  mpAccessToken String?
+
+  plan        PlanTier   @default(FREE)
+  planStatus  PlanStatus @default(ACTIVE)
+  planRenewsAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  memberships  Membership[]
+  products     Product[]
+  orders       Order[]
+  subscription Subscription?
+
+  @@index([slug])
+}
+
+model Membership {
+  id        String         @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      MembershipRole @default(OWNER)
+  createdAt DateTime       @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+// Billing hook — populated once a real provider (Stripe / MercadoPago) is wired.
+model Subscription {
+  id               String     @id @default(cuid())
+  tenantId         String     @unique
+  plan             PlanTier   @default(FREE)
+  status           PlanStatus @default(ACTIVE)
+  provider         String?
+  externalId       String?
+  currentPeriodEnd DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Catalog + orders
+// ---------------------------------------------------------------------------
+
+model Product {
+  id          String      @id @default(cuid())
+  tenantId    String
+  type        ProductType @default(PRODUCT)
+  title       String
+  slug        String      @unique
+  description String?
+  price       Decimal     @db.Decimal(10, 2)
+  currency    String      @default("ARS")
+  // Null means unlimited (typical for services).
+  stock       Int?
+  imageUrl    String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  tenantId   String
+  consumerId String
+  status     OrderStatus @default(RECEIVED)
+  subtotal   Decimal     @db.Decimal(10, 2)
+  total      Decimal     @db.Decimal(10, 2)
+  currency   String      @default("ARS")
+  createdAt  DateTime    @default(now())
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consumer User        @relation(fields: [consumerId], references: [id])
+  items    OrderItem[]
+
+  @@index([tenantId])
+  @@index([consumerId])
+}
+
+model OrderItem {
+  id            String  @id @default(cuid())
+  orderId       String
+  productId     String
+  titleSnapshot String
+  unitPrice     Decimal @db.Decimal(10, 2)
+  quantity      Int
+  lineTotal     Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}

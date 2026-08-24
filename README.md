@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MansaOferta
 
-## Getting Started
+Marketplace **SaaS multi-tenant** para pymes: cada pyme (tenant) tiene su propio dashboard donde publica **productos y servicios**, gestiona pedidos y ve analíticas, bajo un plan de suscripción. Los consumidores exploran ofertas de todas las pymes, arman un carrito y compran.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, Server Actions) + **React 19** + **Tailwind v4**
+- **PostgreSQL + Prisma** — base de datos y migraciones tipadas
+- **Auth.js v5** — login con email/contraseña (argon2) + Google OAuth opcional
+- **SSE** — notificaciones de pedidos en tiempo real, sin infraestructura extra
+- **Storage** pluggable — driver `local` (dev) o `s3` (S3 / Cloudflare R2 / MinIO)
+- **Zod** — validación de todas las entradas
+- Autorización server-side en una capa de acceso a datos (`lib/dal.ts`), sin RLS
+
+## Arquitectura
+
+| Capa | Ubicación |
+|------|-----------|
+| Modelo de datos | `prisma/schema.prisma` (User, Tenant, Membership, Subscription, Product, Order, OrderItem) |
+| Auth + sesión | `auth.ts`, `auth.config.ts`, `middleware.ts` |
+| Autorización (reemplaza RLS) | `lib/dal.ts` (`requireUser`, `requireTenantMember`, `requireSuperadmin`) |
+| Checkout transaccional | `lib/checkout.ts` (una order por tenant, stock atómico) |
+| Realtime | `lib/events.ts` + `app/api/realtime/route.ts` (SSE) |
+| Storage | `lib/storage.ts` (`local` / `s3`) |
+| Planes SaaS | `lib/plans.ts` (límites por plan) + modelo `Subscription` (hook de billing) |
+| Cifrado de secretos | `lib/crypto.ts` (AES-256-GCM para el token de MercadoPago) |
+
+### Rutas principales
+
+- Público: `/`, `/browse`, `/p/[slug]` (detalle), `/s/[slug]` (vidriera de una pyme), `/cart`
+- Cuenta: `/login`, `/register`, `/orders` (mis compras)
+- Dashboard pyme: `/dashboard/products`, `/dashboard/orders`, `/dashboard/analytics`, `/dashboard/settings`
+- Operador SaaS: `/admin`
+
+## Puesta en marcha (local)
+
+Requisitos: Node 24+, PostgreSQL.
 
 ```bash
+cp .env.example .env      # completá DATABASE_URL, AUTH_SECRET, ENCRYPTION_KEY
+npm install
+npm run db:migrate        # crea el esquema
+npm run db:seed           # datos demo (opcional)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Generá los secretos:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+openssl rand -base64 33   # AUTH_SECRET
+openssl rand -hex 32      # ENCRYPTION_KEY
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Usuarios demo (tras `db:seed`)
 
-## Learn More
+| Email | Contraseña | Rol |
+|-------|-----------|-----|
+| `pyme@demo.com` | `password123` | dueño de pyme |
+| `cliente@demo.com` | `password123` | consumidor |
+| `admin@demo.com` | `password123` | superadmin |
 
-To learn more about Next.js, take a look at the following resources:
+## Docker
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Levanta Postgres + la app; las migraciones se aplican al arrancar (`prisma migrate deploy`). Necesitás un `.env` con `AUTH_SECRET`, `ENCRYPTION_KEY`, etc. (el `DATABASE_URL` lo sobreescribe el compose para apuntar al servicio `db`).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Consumir la imagen publicada por CI** (por defecto `mansaoferta/app:latest`):
 
-## Deploy on Vercel
+```bash
+docker compose pull    # trae la última imagen
+docker compose up -d
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Para fijar una versión: `APP_IMAGE=mansaoferta/app:<sha> docker compose up -d`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Construir la imagen localmente desde el código** (sin registry):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+```
+
+### CI / publicación de imagen
+
+`.github/workflows/ci.yml` corre lint + typecheck + tests + build en cada push/PR y, **solo si pasan** y es push a `main`, publica la imagen a Docker Hub con tags `:latest` y `:<sha>`. Requiere los secrets `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`; el nombre/namespace se cambia con la variable de repo `DOCKERHUB_IMAGE` (debe pertenecer a esa cuenta de Docker Hub).
+
+## Scripts
+
+| Comando | Descripción |
+|---------|-------------|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` | `prisma generate` + build de producción |
+| `npm run lint` / `npm run typecheck` | Lint / chequeo de tipos |
+| `npm test` | Tests (Vitest) — requiere `DATABASE_URL` |
+| `npm run db:migrate` / `db:seed` / `db:studio` | Utilidades de Prisma |
+
+## Tests
+
+`tests/checkout.test.ts` cubre el checkout transaccional (descuento de stock atómico, rollback ante stock insuficiente, servicios ilimitados, split multi-tenant y validación de cantidades). Corren contra el Postgres de `DATABASE_URL`.
+
+## Notas
+
+- El token de MercadoPago se guarda **cifrado** y nunca se expone al cliente.
+- El realtime por SSE usa un event bus en proceso; para escalar horizontalmente, cambiar `lib/events.ts` a Redis pub/sub o `LISTEN/NOTIFY`.
+- El billing real (Stripe / MercadoPago Suscripciones) está pendiente: el modelo `Subscription` y `lib/plans.ts` son el enganche.

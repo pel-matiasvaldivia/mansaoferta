@@ -33,3 +33,9 @@ coverage/
 
 # Artifacts
 .gemini/
+
+# Local uploads (regenerated at runtime with STORAGE_DRIVER=local)
+uploads/
+
+# Env (provided at runtime via env_file / secrets)
+.env

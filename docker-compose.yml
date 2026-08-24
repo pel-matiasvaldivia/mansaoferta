@@ -1,27 +1,54 @@
-version: '3.8'
-
 services:
-  mansaoferta:
-    image: mansaoferta/app:latest
+  db:
+    image: postgres:16-alpine
+    container_name: mansaoferta-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mansaoferta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mansaoferta}
+      POSTGRES_DB: ${POSTGRES_DB:-mansaoferta}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mansaoferta}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mansaoferta-network
+
+  app:
+    # Consumes the image published by CI (.github/workflows/ci.yml).
+    # Override APP_IMAGE to pin a specific tag, e.g. a commit SHA.
+    # For a local source build instead, add the override file:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+    image: ${APP_IMAGE:-mansaoferta/app:latest}
     container_name: mansaoferta-app
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
       - .env
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
+      NODE_ENV: production
+      # Overrides .env so the app talks to the compose db service.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mansaoferta}:${POSTGRES_PASSWORD:-mansaoferta}@db:5432/${POSTGRES_DB:-mansaoferta}?schema=public
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000" ]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     networks:
       - mansaoferta-network
+
+volumes:
+  db-data:
+  uploads:
 
 networks:
   mansaoferta-network:

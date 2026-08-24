@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { createClient } from '@/utils/supabase/server'
-import { LogOut, Menu } from 'lucide-react'
+import { LogOut } from 'lucide-react'
+import { auth, signOut } from '@/auth'
+import { getCurrentMembership } from '@/lib/dal'
 import CartWidget from './CartWidget'
 
 export default async function Navbar() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const session = await auth()
+    const membership = session?.user ? await getCurrentMembership() : null
 
     return (
         <nav className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-black sticky top-0 z-50">
@@ -25,13 +26,18 @@ export default async function Navbar() {
 
                         <CartWidget />
 
-                        {user ? (
+                        {session?.user ? (
                             <div className="flex items-center gap-4">
                                 <Link href="/dashboard" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                    Dashboard
+                                    {membership ? 'Dashboard' : 'Mis compras'}
                                 </Link>
-                                <form action="/auth/signout" method="post">
-                                    <button className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
+                                <form
+                                    action={async () => {
+                                        'use server'
+                                        await signOut({ redirectTo: '/' })
+                                    }}
+                                >
+                                    <button className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100" aria-label="Cerrar sesión">
                                         <LogOut className="h-5 w-5" />
                                     </button>
                                 </form>

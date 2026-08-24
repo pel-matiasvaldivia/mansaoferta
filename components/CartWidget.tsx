@@ -9,7 +9,10 @@ export default function CartWidget() {
     const { items } = useCart()
     const [mounted, setMounted] = useState(false)
 
+    // Avoid a hydration mismatch: the badge count comes from localStorage, so we
+    // only reveal it after mount.
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true)
     }, [])
 

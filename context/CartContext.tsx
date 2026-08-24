@@ -1,25 +1,29 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 
-type Combo = {
+// A product/service as stored in the client-side cart. Prices are plain numbers
+// (Prisma Decimals are serialized before reaching the client).
+export type CartProduct = {
     id: string
     title: string
-    description: string
+    description: string | null
     price: number
-    pyme_id: string
-    image_url: string | null
+    tenantId: string
+    tenantName: string
+    imageUrl: string | null
+    type: 'PRODUCT' | 'SERVICE'
 }
 
-type CartItem = Combo & {
+type CartItem = CartProduct & {
     quantity: number
 }
 
 type CartContextType = {
     items: CartItem[]
-    addItem: (combo: Combo) => void
+    addItem: (product: CartProduct) => void
     removeItem: (id: string) => void
+    setQuantity: (id: string, quantity: number) => void
     clearCart: () => void
     total: number
 }
@@ -30,35 +34,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const [items, setItems] = useState<CartItem[]>([])
     const [isLoaded, setIsLoaded] = useState(false)
 
-    // Load from local storage
+    // Hydrate the cart from localStorage on mount. Deferred to an effect so the
+    // server and first client render match (empty cart), then we sync the real
+    // value — a legitimate external-store sync, hence the rule disable.
     useEffect(() => {
-        const saved = localStorage.getItem('cart')
-        if (saved) {
-            try {
-                setItems(JSON.parse(saved))
-            } catch (e) {
-                console.error("Failed to parse cart", e)
-            }
+        try {
+            const saved = localStorage.getItem('cart')
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            if (saved) setItems(JSON.parse(saved))
+        } catch (e) {
+            console.error('Failed to parse cart', e)
         }
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsLoaded(true)
     }, [])
 
-    // Save to local storage
     useEffect(() => {
         if (isLoaded) {
-            localStorage.setItem('cart', JSON.stringify(items))
+            try {
+                localStorage.setItem('cart', JSON.stringify(items))
+            } catch {
+                // storage may be unavailable (private mode) — ignore
+            }
         }
     }, [items, isLoaded])
 
-    const addItem = (combo: Combo) => {
+    const addItem = (product: CartProduct) => {
         setItems((prev) => {
-            const existing = prev.find((i) => i.id === combo.id)
+            const existing = prev.find((i) => i.id === product.id)
             if (existing) {
                 return prev.map((i) =>
-                    i.id === combo.id ? { ...i, quantity: i.quantity + 1 } : i
+                    i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
                 )
             }
-            return [...prev, { ...combo, quantity: 1 }]
+            return [...prev, { ...product, quantity: 1 }]
         })
     }
 
@@ -66,12 +75,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setItems((prev) => prev.filter((i) => i.id !== id))
     }
 
+    const setQuantity = (id: string, quantity: number) => {
+        setItems((prev) =>
+            prev
+                .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, quantity) } : i))
+                .filter((i) => i.quantity > 0)
+        )
+    }
+
     const clearCart = () => setItems([])
 
     const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
 
     return (
-        <CartContext.Provider value={{ items, addItem, removeItem, clearCart, total }}>
+        <CartContext.Provider value={{ items, addItem, removeItem, setQuantity, clearCart, total }}>
             {children}
         </CartContext.Provider>
     )

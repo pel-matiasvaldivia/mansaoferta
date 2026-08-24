@@ -17,11 +17,11 @@ services:
       - mansaoferta-network
 
   app:
-    # Consumes the image published by CI (.github/workflows/ci.yml).
+    # Consumes the image published by CI to GHCR (.github/workflows/ci.yml).
     # Override APP_IMAGE to pin a specific tag, e.g. a commit SHA.
     # For a local source build instead, add the override file:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
-    image: ${APP_IMAGE:-mansaoferta/app:latest}
+    image: ${APP_IMAGE:-ghcr.io/pel-matiasvaldivia/mansaoferta:latest}
     container_name: mansaoferta-app
     depends_on:
       db:

@@ -63,14 +63,17 @@ openssl rand -hex 32      # ENCRYPTION_KEY
 
 Levanta Postgres + la app; las migraciones se aplican al arrancar (`prisma migrate deploy`). Necesitás un `.env` con `AUTH_SECRET`, `ENCRYPTION_KEY`, etc. (el `DATABASE_URL` lo sobreescribe el compose para apuntar al servicio `db`).
 
-**Consumir la imagen publicada por CI** (por defecto `mansaoferta/app:latest`):
+**Consumir la imagen publicada por CI** (GHCR, por defecto `ghcr.io/pel-matiasvaldivia/mansaoferta:latest`):
 
 ```bash
 docker compose pull    # trae la última imagen
 docker compose up -d
 ```
 
-Para fijar una versión: `APP_IMAGE=mansaoferta/app:<sha> docker compose up -d`.
+Para fijar una versión: `APP_IMAGE=ghcr.io/pel-matiasvaldivia/mansaoferta:<sha> docker compose up -d`.
+
+> Si el paquete de GHCR es privado, autenticá el pull con un token:
+> `echo $GHCR_TOKEN | docker login ghcr.io -u TU_USUARIO --password-stdin`
 
 **Construir la imagen localmente desde el código** (sin registry):
 
@@ -80,7 +83,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 
 ### CI / publicación de imagen
 
-`.github/workflows/ci.yml` corre lint + typecheck + tests + build en cada push/PR y, **solo si pasan** y es push a `main`, publica la imagen a Docker Hub con tags `:latest` y `:<sha>`. Requiere los secrets `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`; el nombre/namespace se cambia con la variable de repo `DOCKERHUB_IMAGE` (debe pertenecer a esa cuenta de Docker Hub).
+`.github/workflows/ci.yml` corre lint + typecheck + tests + build en cada push/PR y, **solo si pasan** y es push a `main`, publica la imagen a **GitHub Container Registry (ghcr.io)** con tags `:latest` y `:<sha>`. Usa el `GITHUB_TOKEN` integrado (no requiere secrets externos); solo asegurate de que Actions tenga permiso de escritura de packages (Settings → Actions → Workflow permissions, o el bloque `permissions` del job ya lo declara). La imagen queda en `ghcr.io/<owner>/<repo>`.
 
 ## Scripts
 

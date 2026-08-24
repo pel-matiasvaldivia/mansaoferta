@@ -40,10 +40,14 @@ jobs:
       - run: npm run build
 
   # Publish the Docker image only after quality passes, and only on main.
+  # Set the DOCKERHUB_IMAGE repo variable to change the image name/namespace
+  # (must match the account behind DOCKERHUB_USERNAME); defaults to mansaoferta/app.
   publish:
     needs: quality
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ vars.DOCKERHUB_IMAGE || 'mansaoferta/app' }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -55,6 +59,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: mansaoferta/app:latest
+          # A moving `latest` (consumed by docker-compose.yml) plus an immutable
+          # per-commit tag for rollbacks / pinning via APP_IMAGE.
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

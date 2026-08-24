@@ -61,11 +61,26 @@ openssl rand -hex 32      # ENCRYPTION_KEY
 
 ## Docker
 
+Levanta Postgres + la app; las migraciones se aplican al arrancar (`prisma migrate deploy`). Necesitás un `.env` con `AUTH_SECRET`, `ENCRYPTION_KEY`, etc. (el `DATABASE_URL` lo sobreescribe el compose para apuntar al servicio `db`).
+
+**Consumir la imagen publicada por CI** (por defecto `mansaoferta/app:latest`):
+
 ```bash
-docker compose up --build
+docker compose pull    # trae la última imagen
+docker compose up -d
 ```
 
-Levanta Postgres + la app; las migraciones se aplican al arrancar (`prisma migrate deploy`). Configurá las variables en `.env` (o secrets del compose).
+Para fijar una versión: `APP_IMAGE=mansaoferta/app:<sha> docker compose up -d`.
+
+**Construir la imagen localmente desde el código** (sin registry):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+```
+
+### CI / publicación de imagen
+
+`.github/workflows/ci.yml` corre lint + typecheck + tests + build en cada push/PR y, **solo si pasan** y es push a `main`, publica la imagen a Docker Hub con tags `:latest` y `:<sha>`. Requiere los secrets `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`; el nombre/namespace se cambia con la variable de repo `DOCKERHUB_IMAGE` (debe pertenecer a esa cuenta de Docker Hub).
 
 ## Scripts
 
